@@ -2,81 +2,98 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>مواقيت الصلاة - نور الشام</title>
+  <title>مواقيت الصلاة</title>
+  <style>
+    body { font-family: "Cairo", sans-serif; text-align: center; background: #f0f0f0; color: #333; }
+    h1 { color: #006400; }
+    #times { margin-top: 20px; }
+    .prayer { padding: 10px; margin: 5px; background: #fff; border-radius: 10px; box-shadow: 0 0 5px rgba(0,0,0,0.2); }
+  </style>
 </head>
-<body style="font-family: 'Cairo', sans-serif; background:#f8f8f8; text-align:center;">
-
+<body>
   <h1>🕌 مواقيت الصلاة</h1>
-  <p id="location">جاري تحديد موقعك...</p>
+  <p id="status">⏳ جاري تحديد موقعك...</p>
   <div id="times"></div>
 
-  <!-- صوت الأذان -->
-  <audio id="adhan-audio" src="https://download.quranicaudio.com/quran/abdullaah_3awwaad_al-juhaynee/001.mp3"></audio>
+  <audio id="adhan-audio" src="https://download.tvquran.com/download/adhan/25/Adhan-Makkah.mp3"></audio>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/adhan/4.4.0/Adhan.js"></script>
   <script>
-    // طلب الإذن للإشعارات
-    if (Notification.permission !== "granted") {
+    // طلب إذن الإشعارات
+    if ("Notification" in window) {
       Notification.requestPermission();
     }
 
+    // دالة عرض إشعار
     function showNotification(title, body) {
       if (Notification.permission === "granted") {
-        new Notification(title, { body: body, icon: "https://i.ibb.co/tQ6bNQ2/mosque.png" });
+        new Notification(title, { body });
       }
     }
 
-    // تحديد الموقع
-    navigator.geolocation.getCurrentPosition(function(pos) {
-      const lat = pos.coords.latitude;
-      const lon = pos.coords.longitude;
-      document.getElementById("location").innerText = `موقعك: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    // جلب مواقيت الصلاة من API
+    function fetchPrayerTimes(lat, lon) {
+      const today = new Date();
+      const url = `https://api.aladhan.com/v1/timings/${today.getDate()}-${today.getMonth()+1}-${today.getFullYear()}?latitude=${lat}&longitude=${lon}&method=2`;
 
-      const date = new Date();
-      const params = adhan.CalculationMethod.MuslimWorldLeague();
-      params.adjustments.fajr = 2; // تعديل بسيط للفجر
-      const prayerTimes = new adhan.PrayerTimes(new adhan.Coordinates(lat, lon), date, params);
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById("status").textContent = "✅ تم جلب مواقيت الصلاة";
+          const timesDiv = document.getElementById("times");
+          timesDiv.innerHTML = "";
 
-      const formatTime = t => t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+          const timings = data.data.timings;
+          const adhanAudio = document.getElementById("adhan-audio");
 
-      const timesHtml = `
-        <p>الفجر: ${formatTime(prayerTimes.fajr)}</p>
-        <p>الظهر: ${formatTime(prayerTimes.dhuhr)}</p>
-        <p>العصر: ${formatTime(prayerTimes.asr)}</p>
-        <p>المغرب: ${formatTime(prayerTimes.maghrib)}</p>
-        <p>العشاء: ${formatTime(prayerTimes.isha)}</p>
-      `;
-      document.getElementById("times").innerHTML = timesHtml;
+          Object.entries(timings).forEach(([name, time]) => {
+            if (["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].includes(name)) {
+              const div = document.createElement("div");
+              div.className = "prayer";
+              div.innerHTML = `<b>${name}:</b> ${time}`;
+              timesDiv.appendChild(div);
 
-      // تشغيل الأذان والإشعارات
-      function schedulePrayer(prayerName, time) {
-        const now = new Date();
-        const diff = time - now;
+              // حساب وقت الصلاة
+              const [hour, minute] = time.split(":").map(Number);
+              const prayerTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hour, minute, 0);
 
-        if (diff > 0) {
-          // إشعار قبل الصلاة بـ10 دقائق
-          setTimeout(() => {
-            showNotification("تذكير بالصلاة", `باقي 10 دقائق على صلاة ${prayerName}`);
-          }, diff - 10*60*1000);
+              // إشعار قبل الصلاة بـ 10 دقائق
+              const beforeTime = new Date(prayerTime.getTime() - 10*60000);
+              const now = new Date();
 
-          // الأذان عند دخول الوقت
-          setTimeout(() => {
-            showNotification("🕌 وقت الصلاة", `حان الآن وقت صلاة ${prayerName}`);
-            document.getElementById("adhan-audio").play();
-          }, diff);
+              if (beforeTime > now) {
+                setTimeout(() => {
+                  showNotification("⏳ تذكير", `باقي 10 دقائق على صلاة ${name}`);
+                }, beforeTime - now);
+              }
+
+              // تشغيل صوت الأذان عند وقت الصلاة
+              if (prayerTime > now) {
+                setTimeout(() => {
+                  showNotification("🕌 وقت الصلاة", `حان الآن وقت ${name}`);
+                  adhanAudio.play();
+                }, prayerTime - now);
+              }
+            }
+          });
+        })
+        .catch(() => {
+          document.getElementById("status").textContent = "❌ فشل في جلب المواقيت";
+        });
+    }
+
+    // الحصول على الموقع
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          fetchPrayerTimes(pos.coords.latitude, pos.coords.longitude);
+        },
+        err => {
+          document.getElementById("status").textContent = "⚠️ رجاءً فعّل إذن الموقع حتى يتم تحديد المواقيت.";
         }
-      }
-
-      schedulePrayer("الفجر", prayerTimes.fajr);
-      schedulePrayer("الظهر", prayerTimes.dhuhr);
-      schedulePrayer("العصر", prayerTimes.asr);
-      schedulePrayer("المغرب", prayerTimes.maghrib);
-      schedulePrayer("العشاء", prayerTimes.isha);
-
-    }, function(err) {
-      document.getElementById("location").innerText = "لم يتم تحديد الموقع";
-    });
+      );
+    } else {
+      document.getElementById("status").textContent = "❌ المتصفح لا يدعم GPS";
+    }
   </script>
 </body>
 </html>
