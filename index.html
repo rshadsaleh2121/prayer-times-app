@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مواقيت الصلاة - نور الشام</title>
+</head>
+<body style="font-family: 'Cairo', sans-serif; background:#f8f8f8; text-align:center;">
+
+  <h1>🕌 مواقيت الصلاة</h1>
+  <p id="location">جاري تحديد موقعك...</p>
+  <div id="times"></div>
+
+  <!-- صوت الأذان -->
+  <audio id="adhan-audio" src="https://download.quranicaudio.com/quran/abdullaah_3awwaad_al-juhaynee/001.mp3"></audio>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/adhan/4.4.0/Adhan.js"></script>
+  <script>
+    // طلب الإذن للإشعارات
+    if (Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+
+    function showNotification(title, body) {
+      if (Notification.permission === "granted") {
+        new Notification(title, { body: body, icon: "https://i.ibb.co/tQ6bNQ2/mosque.png" });
+      }
+    }
+
+    // تحديد الموقع
+    navigator.geolocation.getCurrentPosition(function(pos) {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      document.getElementById("location").innerText = `موقعك: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+
+      const date = new Date();
+      const params = adhan.CalculationMethod.MuslimWorldLeague();
+      params.adjustments.fajr = 2; // تعديل بسيط للفجر
+      const prayerTimes = new adhan.PrayerTimes(new adhan.Coordinates(lat, lon), date, params);
+
+      const formatTime = t => t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+      const timesHtml = `
+        <p>الفجر: ${formatTime(prayerTimes.fajr)}</p>
+        <p>الظهر: ${formatTime(prayerTimes.dhuhr)}</p>
+        <p>العصر: ${formatTime(prayerTimes.asr)}</p>
+        <p>المغرب: ${formatTime(prayerTimes.maghrib)}</p>
+        <p>العشاء: ${formatTime(prayerTimes.isha)}</p>
+      `;
+      document.getElementById("times").innerHTML = timesHtml;
+
+      // تشغيل الأذان والإشعارات
+      function schedulePrayer(prayerName, time) {
+        const now = new Date();
+        const diff = time - now;
+
+        if (diff > 0) {
+          // إشعار قبل الصلاة بـ10 دقائق
+          setTimeout(() => {
+            showNotification("تذكير بالصلاة", `باقي 10 دقائق على صلاة ${prayerName}`);
+          }, diff - 10*60*1000);
+
+          // الأذان عند دخول الوقت
+          setTimeout(() => {
+            showNotification("🕌 وقت الصلاة", `حان الآن وقت صلاة ${prayerName}`);
+            document.getElementById("adhan-audio").play();
+          }, diff);
+        }
+      }
+
+      schedulePrayer("الفجر", prayerTimes.fajr);
+      schedulePrayer("الظهر", prayerTimes.dhuhr);
+      schedulePrayer("العصر", prayerTimes.asr);
+      schedulePrayer("المغرب", prayerTimes.maghrib);
+      schedulePrayer("العشاء", prayerTimes.isha);
+
+    }, function(err) {
+      document.getElementById("location").innerText = "لم يتم تحديد الموقع";
+    });
+  </script>
+</body>
+</html>
